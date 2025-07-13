@@ -38,16 +38,20 @@ function App() {
     <>
       <CatAnimation />
       <div
-        className="absolute left-2 right-2 bottom-2 flex flex-col p-2 bg-pink-100/70 backdrop-blur-md rounded-xl"
-        style={{ top: WIDGET_TOP_OFFSET_REM }}
+        className="absolute left-2 right-2 bottom-2 flex flex-col p-2 backdrop-blur-md rounded-xl"
+        //  bg-pink-100/70
+        style={{
+          top: WIDGET_TOP_OFFSET_REM,
+          background: 'linear-gradient(to right, rgba(196, 191, 208, 0.9), rgba(254, 242, 242, 0.9))'
+        }}
       >
-        <div className="flex justify-end mb-1">
+        {/* <div className="flex justify-end mb-1">
           <Settings />
-        </div>
+        </div> */}
 
         {/* Main Content Area */}
         {/* Reduced space-x-4 to space-x-2 (0.5rem) */}
-        <div className="flex-1 flex items-stretch space-x-2">
+        <div className="flex-1 flex items-stretch space-x-0.5">
           {/* Left Column - Pomodoro Timer */}
           {/* Removed p-1, let PomodoroTimer manage its internal padding */}
           <div className="flex-1 flex items-center justify-center">

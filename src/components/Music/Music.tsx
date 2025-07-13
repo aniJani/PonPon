@@ -4,27 +4,15 @@ import { listen } from '@tauri-apps/api/event';
 import React, { useEffect, useState } from 'react';
 
 // --- SVG Icons ---
-const PlayIcon = ({ size = "20" }) => ( // Slightly larger central play/pause
+const PlayIcon = ({ size = "24" }) => ( // Larger size for main button
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-700 hover:text-black transition-colors">
         <path d="M8 5v14l11-7z" />
     </svg>
 );
 
-const PauseIcon = ({ size = "20" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-700 hover:text-black transition-colors">
+const PauseIcon = ({ size = "20" }) => ( // Larger size for main button
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor" className="text-gray-700 hover:text-black transition-colors">
         <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-    </svg>
-);
-
-const PrevIcon = ({ size = "18" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-600 hover:text-black transition-colors">
-        <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
-    </svg>
-);
-
-const NextIcon = ({ size = "18" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-600 hover:text-black transition-colors">
-        <path d="M16 18h2V6h-2zM6 18l8.5-6L6 6z" />
     </svg>
 );
 // --- End SVG Icons ---
@@ -61,43 +49,40 @@ const Music: React.FC = () => {
                 setCurrentTime(0);
             }
         });
-        // invoke('get_initial_media_state').catch(console.error);
         return () => { unlisten.then(f => f()); };
     }, []);
 
     const handlePlayPause = () => invoke('system_media_toggle_play_pause').catch(console.error);
-    const handleNextTrack = () => invoke('system_media_next_track').catch(console.error);
-    const handlePreviousTrack = () => invoke('system_media_previous_track').catch(console.error);
 
     const progressPercent = totalTime > 0 ? (currentTime / totalTime) * 100 : 0;
-    const placeholderAlbumArt = "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2240%22%20height%3D%2240%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2040%2040%22%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20fill%3D%22%23ddd%22%3E%3C%2Frect%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20fill%3D%22%23777%22%20dy%3D%22.3em%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%3E%E2%99%AB%3C%2Ftext%3E%3C%2Fsvg%3E";
 
-    // Helper function to truncate text to 23 characters
-    const truncateText = (text: string | null, maxLength: number = 23): string => {
+    // Helper function to truncate text to 25 characters
+    const truncateText = (text: string | null, maxLength: number = 25): string => {
         if (!text) return "";
         return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
     };
 
     return (
         <div className="h-full flex flex-col p-1.5 text-gray-700 overflow-hidden">
-            {/* Main content: Album art, Info, Progress, Controls */}
-            <div className="flex items-center space-x-2 flex-grow min-h-0 overflow-hidden">
-                {/* Album Art */}
-                <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 border border-gray-300/50">
-                    <img
-                        src={albumArt || placeholderAlbumArt}
-                        alt="Album"
-                        className="w-full h-full object-cover"
-                        onError={(e) => (e.currentTarget.src = placeholderAlbumArt)}
-                    />
+            {/* Main content: Play/Pause Button, Info, Progress */}
+            <div className="flex items-center space-x-0 flex-grow min-h-0 overflow-hidden">
+                {/* Play/Pause Button */}
+                <div className="flex-shrink-0">
+                    <button
+                        onClick={handlePlayPause}
+                        className="w-8 h-8 rounded-full hover:bg-gray-200/70 flex items-center justify-center transition-colors"
+                        title={isSystemPlaying ? "Pause" : "Play"}
+                    >
+                        {isSystemPlaying ? <PauseIcon size="18" /> : <PlayIcon size="20" />}
+                    </button>
                 </div>
 
-                {/* Right side: Track Info, Progress, Mini Controls */}
+                {/* Right side: Track Info, Progress */}
                 <div className="flex-1 flex flex-col justify-center min-w-0 h-full space-y-1 overflow-hidden">
                     {/* Track Info */}
                     <div className="overflow-hidden min-w-0 max-w-full">
                         <p className="text-xs font-semibold overflow-hidden whitespace-nowrap" title={systemTrack || ""}>
-                            {truncateText(systemTrack || "---", 23)}
+                            {truncateText(systemTrack || "---", 25)}
                         </p>
                         {systemArtist && (
                             <p className="text-[10px] text-gray-600 overflow-hidden whitespace-nowrap" title={systemArtist}>
@@ -114,19 +99,6 @@ const Music: React.FC = () => {
                         />
                     </div>
                 </div>
-            </div>
-
-            {/* Bottom Controls: Prev, Play/Pause, Next - Centered */}
-            <div className="flex items-center justify-center space-x-4 mt-1 pt-1 flex-shrink-0 overflow-hidden">
-                <button onClick={handlePreviousTrack} className="p-1 rounded-full hover:bg-gray-200/70 flex-shrink-0" title="Previous">
-                    <PrevIcon />
-                </button>
-                <button onClick={handlePlayPause} className="p-1 rounded-full hover:bg-gray-200/70 flex-shrink-0" title={isSystemPlaying ? "Pause" : "Play"}>
-                    {isSystemPlaying ? <PauseIcon /> : <PlayIcon />}
-                </button>
-                <button onClick={handleNextTrack} className="p-1 rounded-full hover:bg-gray-200/70 flex-shrink-0" title="Next">
-                    <NextIcon />
-                </button>
             </div>
         </div>
     );

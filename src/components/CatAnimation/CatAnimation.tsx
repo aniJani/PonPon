@@ -10,8 +10,8 @@ interface CatAnimationProps {
 const CatAnimation: React.FC<CatAnimationProps> = () => {
     return (
         <div
-            className="absolute top-6 left-1/2 w-12 h-12 z-50 pointer-events-none"
-            style={{ transform: 'translateX(calc(-75% - 7rem))' }}
+            className="absolute top-3 left-1/2 w-16 h-16 z-50 pointer-events-none"
+            style={{ transform: 'translateX(calc(-75% - 6rem))' }}
         >
             <img
                 src={catAnimationGif}

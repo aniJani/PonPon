@@ -40,4 +40,4 @@ windows = { version = "0.58.0", features = [ # Ensure this version is recent and
     "Win32_System_WinRT", # Provides RoInitialize, RoUninitialize, RO_INIT_TYPE etc.
     "Win32_Foundation",   # Provides S_OK, S_FALSE, HRESULT
     "Win32_System_Com",   # For general COM utilities, might not be strictly needed if WinRT covers all
-]}
+] }
