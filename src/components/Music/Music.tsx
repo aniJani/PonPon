@@ -15,6 +15,18 @@ const PauseIcon = ({ size = "20" }) => ( // Larger size for main button
         <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
     </svg>
 );
+
+const NextIcon = ({ size = "16" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-700 hover:text-black transition-colors">
+        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+    </svg>
+);
+
+const PreviousIcon = ({ size = "16" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className="text-gray-700 hover:text-black transition-colors">
+        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+    </svg>
+);
 // --- End SVG Icons ---
 
 interface MediaInfoPayload {
@@ -30,7 +42,6 @@ const Music: React.FC = () => {
     const [systemTrack, setSystemTrack] = useState<string | null>("No Media Detected");
     const [systemArtist, setSystemArtist] = useState<string | null>(null);
     const [isSystemPlaying, setIsSystemPlaying] = useState(false);
-    const [albumArt, setAlbumArt] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState(0); // in seconds
     const [totalTime, setTotalTime] = useState(0);     // in seconds
 
@@ -39,7 +50,6 @@ const Music: React.FC = () => {
             setSystemTrack(event.payload.title || "Unknown Title");
             setSystemArtist(event.payload.artist || "Unknown Artist");
             setIsSystemPlaying(event.payload.is_playing);
-            setAlbumArt(event.payload.album_art_url || null);
 
             if (event.payload.total_time_ms && event.payload.total_time_ms > 0) {
                 setTotalTime(event.payload.total_time_ms / 1000);
@@ -53,6 +63,8 @@ const Music: React.FC = () => {
     }, []);
 
     const handlePlayPause = () => invoke('system_media_toggle_play_pause').catch(console.error);
+    const handleNext = () => invoke('system_media_next_track').catch(console.error);
+    const handlePrevious = () => invoke('system_media_previous_track').catch(console.error);
 
     const progressPercent = totalTime > 0 ? (currentTime / totalTime) * 100 : 0;
 
@@ -64,16 +76,30 @@ const Music: React.FC = () => {
 
     return (
         <div className="h-full flex flex-col p-1.5 text-gray-700 overflow-hidden">
-            {/* Main content: Play/Pause Button, Info, Progress */}
-            <div className="flex items-center space-x-0 flex-grow min-h-0 overflow-hidden">
-                {/* Play/Pause Button */}
-                <div className="flex-shrink-0">
+            {/* Main content: Media Controls, Info, Progress */}
+            <div className="flex items-center space-x-1 flex-grow min-h-0 overflow-hidden">
+                {/* Media Controls */}
+                <div className="flex-shrink-0 flex items-center space-x-0.5">
+                    <button
+                        onClick={handlePrevious}
+                        className="w-6 h-6 rounded-full hover:bg-gray-200/70 flex items-center justify-center transition-colors"
+                        title="Previous Track"
+                    >
+                        <PreviousIcon size="16" />
+                    </button>
                     <button
                         onClick={handlePlayPause}
                         className="w-8 h-8 rounded-full hover:bg-gray-200/70 flex items-center justify-center transition-colors"
                         title={isSystemPlaying ? "Pause" : "Play"}
                     >
                         {isSystemPlaying ? <PauseIcon size="18" /> : <PlayIcon size="20" />}
+                    </button>
+                    <button
+                        onClick={handleNext}
+                        className="w-6 h-6 rounded-full hover:bg-gray-200/70 flex items-center justify-center transition-colors"
+                        title="Next Track"
+                    >
+                        <NextIcon size="16" />
                     </button>
                 </div>
 
@@ -82,11 +108,11 @@ const Music: React.FC = () => {
                     {/* Track Info */}
                     <div className="overflow-hidden min-w-0 max-w-full">
                         <p className="text-xs font-semibold overflow-hidden whitespace-nowrap" title={systemTrack || ""}>
-                            {truncateText(systemTrack || "---", 25)}
+                            {truncateText(systemTrack || "---", 20)}
                         </p>
                         {systemArtist && (
                             <p className="text-[10px] text-gray-600 overflow-hidden whitespace-nowrap" title={systemArtist}>
-                                {truncateText(systemArtist, 23)}
+                                {truncateText(systemArtist, 18)}
                             </p>
                         )}
                     </div>

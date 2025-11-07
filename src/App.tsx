@@ -5,7 +5,6 @@ import CatAnimation from './components/CatAnimation/CatAnimation';
 import Music from './components/Music/Music';
 import Notes from './components/Notes/Notes';
 import PomodoroTimer from './components/PomodoroTimer/PomodoroTimer';
-import Settings from './components/Settings/Settings';
 
 function App() {
   useEffect(() => {
@@ -14,9 +13,6 @@ function App() {
         const appWindow = getCurrentWindow();
         const screenWidth = window.screen.width;
         const screenHeight = window.screen.height;
-
-        const windowWidth = 600;
-        const windowHeight = 300;
 
         const x = screenWidth;
         const y = screenHeight;

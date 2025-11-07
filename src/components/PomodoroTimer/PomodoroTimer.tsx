@@ -23,21 +23,74 @@ const ResetIcon = () => (
 const PomodoroTimer: React.FC = () => {
     const [WORK_MINUTES, setWorkMinutes] = useState(25);
     const [BREAK_MINUTES, setBreakMinutes] = useState(5);
+    const [LONG_BREAK_MINUTES, setLongBreakMinutes] = useState(15);
 
     const [minutes, setMinutes] = useState(WORK_MINUTES);
     const [seconds, setSeconds] = useState(0);
     const [isActive, setIsActive] = useState(false);
-    const [mode, setMode] = useState<'work' | 'break'>('work');
+    const [mode, setMode] = useState<'work' | 'break' | 'longBreak'>('work');
     const [totalDuration, setTotalDuration] = useState(WORK_MINUTES * 60);
     const [showSettings, setShowSettings] = useState(false);
+    const [sessionCount, setSessionCount] = useState(0); // Track completed work sessions
+    const [totalSessionsToday, setTotalSessionsToday] = useState(0); // Total completed today
 
     useEffect(() => {
-        setTotalDuration((mode === 'work' ? WORK_MINUTES : BREAK_MINUTES) * 60);
-    }, [mode, WORK_MINUTES, BREAK_MINUTES]);
+        const duration = mode === 'work' ? WORK_MINUTES : mode === 'longBreak' ? LONG_BREAK_MINUTES : BREAK_MINUTES;
+        setTotalDuration(duration * 60);
+    }, [mode, WORK_MINUTES, BREAK_MINUTES, LONG_BREAK_MINUTES]);
+
+    // Load session count from localStorage on mount
+    useEffect(() => {
+        const today = new Date().toDateString();
+        const savedDate = localStorage.getItem('pomodoroDate');
+        const savedCount = localStorage.getItem('pomodoroSessionsToday');
+
+        if (savedDate === today && savedCount) {
+            setTotalSessionsToday(parseInt(savedCount));
+        } else {
+            // New day, reset count
+            localStorage.setItem('pomodoroDate', today);
+            localStorage.setItem('pomodoroSessionsToday', '0');
+            setTotalSessionsToday(0);
+        }
+    }, []);
+
+    // Play completion sound
+    const playCompletionSound = () => {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    };
+
+    // Send notification
+    const sendNotification = (title: string, body: string) => {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(title, { body, icon: '/favicon.ico' });
+        }
+    };
+
+    // Request notification permission on mount
+    useEffect(() => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }, []);
 
 
     useEffect(() => {
-        let interval: NodeJS.Timeout | null = null;
+        let interval: ReturnType<typeof setInterval> | null = null;
         if (isActive) {
             interval = setInterval(() => {
                 if (seconds > 0) setSeconds(s => s - 1);
@@ -45,10 +98,37 @@ const PomodoroTimer: React.FC = () => {
                     setMinutes(m => m - 1);
                     setSeconds(59);
                 } else {
+                    // Timer completed
                     setIsActive(false);
-                    const nextMode = mode === 'work' ? 'break' : 'work';
-                    setMode(nextMode);
-                    setMinutes(nextMode === 'work' ? WORK_MINUTES : BREAK_MINUTES);
+                    playCompletionSound();
+
+                    if (mode === 'work') {
+                        // Work session completed
+                        const newSessionCount = sessionCount + 1;
+                        const newTotalToday = totalSessionsToday + 1;
+                        setSessionCount(newSessionCount);
+                        setTotalSessionsToday(newTotalToday);
+
+                        // Save to localStorage
+                        localStorage.setItem('pomodoroSessionsToday', newTotalToday.toString());
+
+                        // Check if it's time for long break
+                        if (newSessionCount >= 4) {
+                            setMode('longBreak');
+                            setMinutes(LONG_BREAK_MINUTES);
+                            sendNotification('Great work! 🎉', `You've completed 4 sessions! Time for a long break (${LONG_BREAK_MINUTES} min).`);
+                            setSessionCount(0); // Reset for next cycle
+                        } else {
+                            setMode('break');
+                            setMinutes(BREAK_MINUTES);
+                            sendNotification('Work session complete! ✅', `Time for a short break (${BREAK_MINUTES} min). Session ${newSessionCount}/4 done.`);
+                        }
+                    } else {
+                        // Break completed
+                        setMode('work');
+                        setMinutes(WORK_MINUTES);
+                        sendNotification('Break over! 💪', `Time to get back to work (${WORK_MINUTES} min). Let's go!`);
+                    }
                     setSeconds(0);
                 }
             }, 1000);
@@ -56,12 +136,13 @@ const PomodoroTimer: React.FC = () => {
             clearInterval(interval);
         }
         return () => { if (interval) clearInterval(interval); };
-    }, [isActive, seconds, minutes, mode, WORK_MINUTES, BREAK_MINUTES]);
+    }, [isActive, seconds, minutes, mode, sessionCount, totalSessionsToday, WORK_MINUTES, BREAK_MINUTES, LONG_BREAK_MINUTES]);
 
     const toggleTimer = () => setIsActive(!isActive);
     const resetTimer = () => {
         setIsActive(false);
-        setMinutes(mode === 'work' ? WORK_MINUTES : BREAK_MINUTES);
+        const duration = mode === 'work' ? WORK_MINUTES : mode === 'longBreak' ? LONG_BREAK_MINUTES : BREAK_MINUTES;
+        setMinutes(duration);
         setSeconds(0);
     };
 
@@ -71,10 +152,12 @@ const PomodoroTimer: React.FC = () => {
         }
     };
 
-    const saveSettings = (workDuration: number, breakDuration: number) => {
+    const saveSettings = (workDuration: number, breakDuration: number, longBreakDuration: number) => {
         setWorkMinutes(workDuration);
         setBreakMinutes(breakDuration);
-        setMinutes(mode === 'work' ? workDuration : breakDuration);
+        setLongBreakMinutes(longBreakDuration);
+        const duration = mode === 'work' ? workDuration : mode === 'longBreak' ? longBreakDuration : breakDuration;
+        setMinutes(duration);
         setShowSettings(false);
     };
 
@@ -113,7 +196,7 @@ const PomodoroTimer: React.FC = () => {
 
                         <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
-                                Break Duration (minutes)
+                                Short Break (minutes)
                             </label>
                             <input
                                 type="number"
@@ -125,12 +208,27 @@ const PomodoroTimer: React.FC = () => {
                             />
                         </div>
 
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Long Break (minutes)
+                            </label>
+                            <input
+                                type="number"
+                                defaultValue={LONG_BREAK_MINUTES}
+                                id="longBreakDuration"
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                                min="5"
+                                max="60"
+                            />
+                        </div>
+
                         <div className="flex space-x-2">
                             <button
                                 onClick={() => {
                                     const workInput = document.getElementById('workDuration') as HTMLInputElement;
                                     const breakInput = document.getElementById('breakDuration') as HTMLInputElement;
-                                    saveSettings(Number(workInput.value), Number(breakInput.value));
+                                    const longBreakInput = document.getElementById('longBreakDuration') as HTMLInputElement;
+                                    saveSettings(Number(workInput.value), Number(breakInput.value), Number(longBreakInput.value));
                                 }}
                                 className="flex-1 px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 transition-colors"
                             >
@@ -155,7 +253,6 @@ const PomodoroTimer: React.FC = () => {
                     viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
                     className="transform -rotate-90 cursor-pointer"
                     onClick={handleCircleClick}
-                    title={!isActive ? "Click to open settings" : "Timer is running"}
                 >
                     {/* Define the brush spray gradient */}
                     <defs>
@@ -207,6 +304,22 @@ const PomodoroTimer: React.FC = () => {
                     <span className="text-2xl font-sans font-semibold text-white relative z-10">
                         {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
                     </span>
+                </div>
+            </div>
+
+            {/* Session Info */}
+            <div className="flex flex-col items-center space-y-1">
+                <div className="text-xs text-white/90 font-medium">
+                    {mode === 'work' ? (
+                        <span>Work Session {sessionCount + 1}/4</span>
+                    ) : mode === 'longBreak' ? (
+                        <span>Long Break 🌟</span>
+                    ) : (
+                        <span>Short Break ☕</span>
+                    )}
+                </div>
+                <div className="text-[10px] text-white/70">
+                    {totalSessionsToday} session{totalSessionsToday !== 1 ? 's' : ''} completed today
                 </div>
             </div>
 
