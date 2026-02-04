@@ -30,7 +30,6 @@ const Music: React.FC = () => {
     const [systemTrack, setSystemTrack] = useState<string | null>("No Media Detected");
     const [systemArtist, setSystemArtist] = useState<string | null>(null);
     const [isSystemPlaying, setIsSystemPlaying] = useState(false);
-    const [albumArt, setAlbumArt] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState(0); // in seconds
     const [totalTime, setTotalTime] = useState(0);     // in seconds
 
@@ -39,7 +38,6 @@ const Music: React.FC = () => {
             setSystemTrack(event.payload.title || "Unknown Title");
             setSystemArtist(event.payload.artist || "Unknown Artist");
             setIsSystemPlaying(event.payload.is_playing);
-            setAlbumArt(event.payload.album_art_url || null);
 
             if (event.payload.total_time_ms && event.payload.total_time_ms > 0) {
                 setTotalTime(event.payload.total_time_ms / 1000);

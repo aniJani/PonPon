@@ -37,7 +37,7 @@ const PomodoroTimer: React.FC = () => {
 
 
     useEffect(() => {
-        let interval: NodeJS.Timeout | null = null;
+        let interval: ReturnType<typeof setInterval> | null = null;
         if (isActive) {
             interval = setInterval(() => {
                 if (seconds > 0) setSeconds(s => s - 1);
@@ -155,7 +155,7 @@ const PomodoroTimer: React.FC = () => {
                     viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
                     className="transform -rotate-90 cursor-pointer"
                     onClick={handleCircleClick}
-                    title={!isActive ? "Click to open settings" : "Timer is running"}
+                    aria-label={!isActive ? "Click to open settings" : "Timer is running"}
                 >
                     {/* Define the brush spray gradient */}
                     <defs>
