@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { playChime, primeChime } from '../../chime';
 import TimerSettings, { BREAK_RANGE, WORK_RANGE, clampMinutes } from './TimerSettings';
 
 const PlayIcon = () => (
@@ -23,6 +24,7 @@ type Mode = 'work' | 'break';
 type Settings = { work: number; rest: number };
 
 const SETTINGS_KEY = 'ponpon.timer';
+const SESSION_KEY = 'ponpon.session';
 const DEFAULTS: Settings = { work: 25, rest: 5 };
 
 const loadSettings = (): Settings => {
@@ -42,6 +44,32 @@ const loadSettings = (): Settings => {
 const secondsFor = (mode: Mode, settings: Settings) =>
     (mode === 'work' ? settings.work : settings.rest) * 60;
 
+const loadSession = (settings: Settings) => {
+    const fresh = { mode: 'work' as Mode, remaining: secondsFor('work', settings), active: false };
+    try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return fresh;
+        const saved = JSON.parse(raw);
+        const mode: Mode = saved.mode === 'break' ? 'break' : 'work';
+
+        if (typeof saved.endsAt === 'number') {
+            const left = Math.round((saved.endsAt - Date.now()) / 1000);
+            // Was running when the app closed, and the deadline is still ahead: pick the
+            // clock up where wall time actually left it, not where the app stopped looking.
+            if (left > 0) return { mode, remaining: left, active: true };
+            // It elapsed while closed. Open on the next block rather than firing a
+            // completion chime for a session that ended who knows when.
+            const next: Mode = mode === 'work' ? 'break' : 'work';
+            return { mode: next, remaining: secondsFor(next, settings), active: false };
+        }
+
+        const remaining = Number(saved.remaining);
+        if (!Number.isFinite(remaining) || remaining <= 0) return fresh;
+        return { mode, remaining: Math.min(remaining, secondsFor(mode, settings)), active: false };
+    } catch {
+        return fresh;
+    }
+};
 
 const SVG_SIZE = 140;
 const STROKE_WIDTH = 8;
@@ -51,9 +79,10 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 const PomodoroTimer: React.FC = () => {
     const [settings, setSettings] = useState(loadSettings);
-    const [mode, setMode] = useState<Mode>('work');
-    const [remaining, setRemaining] = useState(() => secondsFor('work', settings));
-    const [isActive, setIsActive] = useState(false);
+    const [restored] = useState(() => loadSession(settings));
+    const [mode, setMode] = useState<Mode>(restored.mode);
+    const [remaining, setRemaining] = useState(restored.remaining);
+    const [isActive, setIsActive] = useState(restored.active);
     const [showSettings, setShowSettings] = useState(false);
 
     const durationFor = (m: Mode) => secondsFor(m, settings);
@@ -61,6 +90,27 @@ const PomodoroTimer: React.FC = () => {
     useEffect(() => {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     }, [settings]);
+
+    // Autoplay policy suspends an AudioContext that has never seen a gesture, so the chime
+    // is armed by the first click anywhere — including one that only drags the cat.
+    useEffect(() => {
+        window.addEventListener('pointerdown', primeChime, { once: true });
+        return () => window.removeEventListener('pointerdown', primeChime);
+    }, []);
+
+    // Written once per transition, not per tick: while running, endsAt alone is enough to
+    // rebuild the clock, and a write every 250ms would be pure churn.
+    useEffect(() => {
+        if (!isActive) return;
+        const payload = { mode, endsAt: Date.now() + remaining * 1000 };
+        localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isActive, mode]);
+
+    useEffect(() => {
+        if (isActive) return;
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ mode, remaining }));
+    }, [isActive, mode, remaining]);
 
     useEffect(() => {
         if (!isActive) return;
@@ -79,6 +129,7 @@ const PomodoroTimer: React.FC = () => {
     useEffect(() => {
         if (remaining > 0) return;
         const next: Mode = mode === 'work' ? 'break' : 'work';
+        playChime(mode === 'work' ? 'focus' : 'break');
         setIsActive(false);
         setMode(next);
         setRemaining(secondsFor(next, settings));
