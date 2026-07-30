@@ -547,6 +547,10 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
 
     builder = builder.setup(|app| {
+        #[cfg(desktop)]
+        app.handle()
+            .plugin(tauri_plugin_window_state::Builder::default().build())?;
+
         let main_window = app.get_webview_window("main").unwrap();
         std::thread::spawn(move || {
             #[cfg(windows)]

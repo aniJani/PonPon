@@ -50,3 +50,10 @@ windows = { version = "0.58.0", features = [ # Ensure this version is recent and
     "Win32_Foundation",   # Provides S_OK, S_FALSE, HRESULT
     "Win32_System_Com",   # For general COM utilities, might not be strictly needed if WinRT covers all
 ] }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-window-state = "2.2"
+# Cargo.lock pins tauri-runtime to 2.10.1 on purpose. Resolving it freely picks 2.11.3,
+# for which no matching tauri-runtime-wry is published, and the build fails inside
+# tauri-runtime-wry with a missing `eval_script_with_callback`. If `cargo update` breaks
+# the build, re-pin: cargo update -p tauri-runtime --precise 2.10.1
