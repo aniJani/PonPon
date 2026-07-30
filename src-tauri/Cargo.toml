@@ -33,6 +33,13 @@ default = []
 with-zbus = ["dep:zbus"]
 
 
+# For macOS media keys. Versions match what tauri already pulls in, so these add no
+# extra compilation.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSGraphicsContext"] }
+objc2-core-graphics = { version = "0.3", features = ["CGEvent", "CGEventTypes"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+
 # For Windows SMTC
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58.0", features = [ # Ensure this version is recent and compatible
