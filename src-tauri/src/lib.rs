@@ -357,11 +357,6 @@ fn get_current_os_media_info() -> MediaInfo {
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 fn system_media_toggle_play_pause() {
     // ... (This command remains the same as the last correct version)
     println!("Rust: Command system_media_toggle_play_pause received.");
@@ -576,7 +571,6 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             system_media_toggle_play_pause,
             system_media_next_track,
             system_media_previous_track
