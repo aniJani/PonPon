@@ -200,6 +200,132 @@ fn get_mpris_media_info_with_zbus() -> Result<MediaInfo, Box<dyn std::error::Err
     Ok(MediaInfo::default())
 }
 
+// macOS has no SMTC/MPRIS equivalent we can reach: MediaRemote.framework has required a
+// private Apple entitlement since macOS 15.4, so AppleScript against the player app is the
+// only option. Limits: Spotify and Music.app only — browser/YouTube playback is invisible.
+//
+// The inner script goes through `run script` so it compiles at *runtime*. A statically
+// written two-player script fails to compile as a whole on machines missing either app,
+// taking the working player down with it.
+#[cfg(target_os = "macos")]
+const MACOS_MEDIA_INFO_SCRIPT: &str = r#"set pname to ""
+set dmult to "1000"
+if application "Spotify" is running then
+	set pname to "Spotify"
+	set dmult to "1"
+else if application "Music" is running then
+	set pname to "Music"
+end if
+if pname is "" then return "none"
+try
+	return run script "tell application \"" & pname & "\"\nset p to player position\nif p is missing value then set p to 0\nset d to duration of current track\nif d is missing value then set d to 0\nreturn (name of current track) & tab & (artist of current track) & tab & (player state as text) & tab & ((p * 1000) as integer) & tab & ((d * " & dmult & ") as integer)\nend tell"
+on error
+	return "none"
+end try"#;
+
+// Durations are coerced to integers inside AppleScript on purpose: number-to-text uses the
+// locale decimal separator, so a float would arrive as "12,345" on comma-locale machines.
+#[cfg(target_os = "macos")]
+fn run_osascript(script: &str) -> Option<String> {
+    let out = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        eprintln!(
+            "macOS osascript failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn parse_macos_media_line(line: &str) -> MediaInfo {
+    let fields: Vec<&str> = line.split('\t').collect();
+    if line == "none" || fields.len() < 5 {
+        return MediaInfo::default();
+    }
+    MediaInfo {
+        title: Some(fields[0].to_string()).filter(|s| !s.is_empty()),
+        artist: Some(fields[1].to_string()).filter(|s| !s.is_empty()),
+        is_playing: fields[2] == "playing",
+        album_art_url: None,
+        current_time_ms: fields[3].parse().ok(),
+        total_time_ms: fields[4].parse::<u64>().ok().filter(|d| *d > 0),
+    }
+}
+
+// HID usage codes for the media keys (IOKit's NX_KEYTYPE_*).
+#[cfg(target_os = "macos")]
+const NX_KEYTYPE_PLAY: isize = 16;
+#[cfg(target_os = "macos")]
+const NX_KEYTYPE_NEXT: isize = 17;
+#[cfg(target_os = "macos")]
+const NX_KEYTYPE_PREVIOUS: isize = 18;
+
+// Posting the media key hits whatever app currently owns the system "now playing" role,
+// so this reaches browsers too — unlike the AppleScript path, which can only address
+// Spotify and Music.app by name.
+//
+// Requires the user to grant Accessibility permission; CGEventPost is silently dropped
+// without it, which is why failure here is invisible rather than an error.
+#[cfg(target_os = "macos")]
+fn post_media_key(key: isize) {
+    use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType};
+    use objc2_core_graphics::{CGEvent, CGEventTapLocation};
+    use objc2_foundation::NSPoint;
+
+    // A media key is an NSSystemDefined event with subtype 8 (aux control buttons); the
+    // key code and the down/up state are packed into data1, and the state is mirrored in
+    // the modifier flags. There is no public API for synthesising these.
+    for state in [0xAisize, 0xBisize] {
+        unsafe {
+            let event = NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+                NSEventType::SystemDefined,
+                NSPoint::new(0.0, 0.0),
+                NSEventModifierFlags((state << 8) as usize),
+                0.0,
+                0,
+                None,
+                8,
+                (key << 16) | (state << 8),
+                -1,
+            );
+            if let Some(cg_event) = event.and_then(|e| e.CGEvent()) {
+                CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cg_event));
+            }
+        }
+    }
+}
+
+// Spotify/Music are driven by AppleScript so they respond with only the Automation
+// permission the polling loop already needs. Anything else — browsers above all — falls
+// back to the media key, which costs the user an Accessibility grant. A stopped player is
+// treated as absent so a backgrounded Spotify doesn't swallow a keypress meant for a tab.
+#[cfg(target_os = "macos")]
+fn macos_media_command(cmd: &str, key: isize) {
+    let script = format!(
+        "set pname to \"\"\n\
+         if application \"Spotify\" is running then\n\
+         set pname to \"Spotify\"\n\
+         else if application \"Music\" is running then\n\
+         set pname to \"Music\"\n\
+         end if\n\
+         if pname is \"\" then return \"0\"\n\
+         try\n\
+         return run script \"tell application \\\"\" & pname & \"\\\"\\nif (player state as text) is \\\"stopped\\\" then return \\\"0\\\"\\n{cmd}\\nreturn \\\"1\\\"\\nend tell\"\n\
+         on error\n\
+         return \"0\"\n\
+         end try"
+    );
+    if run_osascript(&script).as_deref() != Some("1") {
+        post_media_key(key);
+    }
+}
+
 fn get_current_os_media_info() -> MediaInfo {
     // ... (This function remains the same)
     cfg_if! {
@@ -214,12 +340,9 @@ fn get_current_os_media_info() -> MediaInfo {
                 Err(e) => { eprintln!("Windows SMTC error: {:?}", e); MediaInfo::default() }
             }
         } else if #[cfg(target_os = "macos")] {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-            let sim_ms = (now % 240) * 1000;
-            MediaInfo {
-                title: Some(format!("macOS Track {}", now % 2)), artist: Some("macOS Artist".into()),
-                is_playing: now % 20 < 10, album_art_url: Some("https://via.placeholder.com/40".into()),
-                current_time_ms: Some(sim_ms), total_time_ms: Some(240 * 1000),
+            match run_osascript(MACOS_MEDIA_INFO_SCRIPT) {
+                Some(out) => parse_macos_media_line(&out),
+                None => MediaInfo::default(),
             }
         } else {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -272,6 +395,8 @@ fn system_media_toggle_play_pause() {
                     } else { eprintln!("Linux MPRIS: No player found for PlayPause."); }
                 } else { eprintln!("Linux MPRIS: Could not list D-Bus names for PlayPause."); }
             } else { eprintln!("Linux MPRIS: Could not connect to D-Bus for PlayPause."); }
+        } else if #[cfg(target_os = "macos")] {
+            macos_media_command("playpause", NX_KEYTYPE_PLAY);
         } else {
             println!("system_media_toggle_play_pause: Not implemented for this OS/feature set.");
         }
@@ -332,9 +457,7 @@ fn system_media_next_track() {
                 } else { eprintln!("Linux MPRIS: Could not list D-Bus names for Next."); }
             } else { eprintln!("Linux MPRIS: Could not connect to D-Bus for Next."); }
         } else if #[cfg(target_os = "macos")] {
-            let _ = std::process::Command::new("osascript")
-                .arg("-e").arg("tell application \"Spotify\" to next track").status();
-            println!("macOS: Sent 'next track' to Spotify (result not checked).");
+            macos_media_command("next track", NX_KEYTYPE_NEXT);
         } else {
             println!("system_media_next_track: Not implemented for this OS/feature set.");
         }
@@ -394,12 +517,33 @@ fn system_media_previous_track() {
                 } else { eprintln!("Linux MPRIS: Could not list D-Bus names for Previous."); }
             } else { eprintln!("Linux MPRIS: Could not connect to D-Bus for Previous."); }
         } else if #[cfg(target_os = "macos")] {
-            let _ = std::process::Command::new("osascript")
-                .arg("-e").arg("tell application \"Spotify\" to previous track").status();
-            println!("macOS: Sent 'previous track' to Spotify (result not checked).");
+            macos_media_command("previous track", NX_KEYTYPE_PREVIOUS);
         } else {
             println!("system_media_previous_track: Not implemented for this OS/feature set.");
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::parse_macos_media_line;
+
+    #[test]
+    fn parses_macos_media_lines() {
+        let m = parse_macos_media_line("Song\tBand\tplaying\t12000\t240000");
+        assert_eq!(m.title.as_deref(), Some("Song"));
+        assert_eq!(m.artist.as_deref(), Some("Band"));
+        assert!(m.is_playing);
+        assert_eq!(m.current_time_ms, Some(12000));
+        assert_eq!(m.total_time_ms, Some(240000));
+
+        assert!(!parse_macos_media_line("Song\tBand\tpaused\t0\t240000").is_playing);
+        assert!(parse_macos_media_line("none").title.is_none());
+        assert!(parse_macos_media_line("").title.is_none());
+        // A live radio stream reports no duration; title must still survive.
+        let stream = parse_macos_media_line("Live\tStation\tplaying\t0\t0");
+        assert_eq!(stream.title.as_deref(), Some("Live"));
+        assert_eq!(stream.total_time_ms, None);
     }
 }
 
@@ -420,6 +564,9 @@ pub fn run() {
                 if main_window.emit("media-info-update", &info).is_err() {
                     // eprintln!("Error emitting media-info-update");
                 }
+                // ponytail: macOS pays a fresh ~50ms osascript spawn every tick, unlike the
+                // in-process SMTC/MPRIS calls. Lengthen the interval or hold a persistent
+                // NSAppleScript if the idle CPU cost ever shows up.
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         });
