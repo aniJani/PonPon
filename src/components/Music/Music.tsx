@@ -54,12 +54,6 @@ const Music: React.FC = () => {
 
     const progressPercent = totalTime > 0 ? (currentTime / totalTime) * 100 : 0;
 
-    // Helper function to truncate text to 25 characters
-    const truncateText = (text: string | null, maxLength: number = 25): string => {
-        if (!text) return "";
-        return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
-    };
-
     return (
         <div className="h-full flex flex-col p-1.5 text-gray-700 overflow-hidden">
             {/* Main content: Play/Pause Button, Info, Progress */}
@@ -79,12 +73,12 @@ const Music: React.FC = () => {
                 <div className="flex-1 flex flex-col justify-center min-w-0 h-full space-y-1 overflow-hidden">
                     {/* Track Info */}
                     <div className="overflow-hidden min-w-0 max-w-full">
-                        <p className="text-xs font-semibold overflow-hidden whitespace-nowrap" title={systemTrack || ""}>
-                            {truncateText(systemTrack || "---", 25)}
+                        <p className="text-xs font-semibold truncate" title={systemTrack || ""}>
+                            {systemTrack || "---"}
                         </p>
                         {systemArtist && (
-                            <p className="text-[10px] text-gray-600 overflow-hidden whitespace-nowrap" title={systemArtist}>
-                                {truncateText(systemArtist, 23)}
+                            <p className="text-[10px] text-gray-600 truncate" title={systemArtist}>
+                                {systemArtist}
                             </p>
                         )}
                     </div>
