@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from 'react';
 
 const Notes: React.FC = () => {
-    const [notes, setNotes] = useState('');
+    // Read on init rather than in an effect: a load-after-mount races the save effect
+    // below, which would write the empty initial value over the saved notes first.
+    const [notes, setNotes] = useState(() => localStorage.getItem('pomodoroNotes') ?? '');
 
-    // Load saved notes on component mount
-    useEffect(() => {
-        const savedNotes = localStorage.getItem('pomodoroNotes');
-        if (savedNotes) {
-            setNotes(savedNotes);
-        }
-    }, []);
-
-    // Save notes to localStorage whenever notes change
     useEffect(() => {
         localStorage.setItem('pomodoroNotes', notes);
     }, [notes]);
